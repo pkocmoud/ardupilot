@@ -224,8 +224,18 @@ private:
     void decode_variable_bit_channels(const uint8_t* data, uint8_t frame_length, uint8_t nchannels, uint16_t *values);
 
     void write_frame(Frame* frame);
-    void start_uart();
-    AP_HAL::UARTDriver* get_current_UART() { return (_uart ? _uart : get_available_UART()); }
+    void start_uart(AP_HAL::UARTDriver *uart);
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+    void set_uart_baud(uint32_t baudrate);
+#endif
+    AP_HAL::UARTDriver* get_rx_uart() { return (_uart ? _uart : get_available_UART()); }
+    AP_HAL::UARTDriver* get_tx_uart() {
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+        return (_telemetry_uart ? _telemetry_uart : get_rx_uart());
+#else
+        return get_rx_uart();
+#endif
+    }
 
     uint16_t _channels[CRSF_MAX_CHANNELS];    /* buffer for extracted RC channel data as pulsewidth in microseconds */
 
@@ -246,6 +256,9 @@ private:
     static const uint16_t RF_MODE_RATES[RFMode::RF_MODE_MAX_MODES];
 
     AP_HAL::UARTDriver *_uart;
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+    AP_HAL::UARTDriver *_telemetry_uart = nullptr;
+#endif
 };
 
 namespace AP {
