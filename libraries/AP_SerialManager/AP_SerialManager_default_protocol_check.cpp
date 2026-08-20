@@ -51,7 +51,7 @@
 #include <AP_RobotisServo/AP_RobotisServo.h>      // AP_ROBOTISSERVO_ENABLED
 #include <AP_Camera/AP_Camera_config.h>      // HAL_RUNCAM_ENABLED
 #include <AP_VideoTX/AP_VideoTX_config.h>    // AP_SMARTAUDIO_ENABLED, AP_TRAMP_ENABLED
-#include <AP_RCTelemetry/AP_RCTelemetry_config.h> // HAL_CRSF_TELEM_ENABLED
+#include <AP_RCTelemetry/AP_RCTelemetry_config.h> // HAL_CRSF_TELEM_ENABLED, AP_CRSF_TELEM_SPLIT_UART_ENABLED
 #include <AP_AIS/AP_AIS_config.h>            // AP_AIS_ENABLED
 #include <AP_ADSB/AP_ADSB_config.h>          // HAL_ADSB_ENABLED
 #include <AP_OpticalFlow/AP_OpticalFlow_config.h> // AP_OPTICALFLOW_ENABLED
@@ -82,6 +82,7 @@ constexpr bool serial_protocol_compiled_in(AP_SerialManager::SerialProtocol p)
         (p != AP_SerialManager::SerialProtocol_AlexMos          || (HAL_MOUNT_ALEXMOS_ENABLED)) &&
         (p != AP_SerialManager::SerialProtocol_Beacon           || (AP_BEACON_ENABLED)) &&
         (p != AP_SerialManager::SerialProtocol_CRSF             || (HAL_CRSF_TELEM_ENABLED)) &&
+        (p != AP_SerialManager::SerialProtocol_CRSF_TX          || (AP_CRSF_TELEM_SPLIT_UART_ENABLED)) &&
         (p != AP_SerialManager::SerialProtocol_DDS_XRCE         || (AP_DDS_ENABLED)) &&
         (p != AP_SerialManager::SerialProtocol_Devo_Telem       || (AP_DEVO_TELEM_ENABLED)) &&
         (p != AP_SerialManager::SerialProtocol_DJI_FPV          || (HAL_MSP_ENABLED)) &&
