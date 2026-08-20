@@ -19731,6 +19731,7 @@ return update, 1000
             self.CompassReordering,
             self.SixCompassCalibrationAndReordering,
             self.CRSF,
+            self.CRSFSplitUART,
             self.MSPVTXConfig,
             self.MSPDisplayPortVTXConfig,
             self.MotorTest,
