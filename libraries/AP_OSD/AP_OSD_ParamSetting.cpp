@@ -26,6 +26,7 @@
 #include <GCS_MAVLink/GCS.h>
 #include <SRV_Channel/SRV_Channel.h>
 #include <AP_SerialManager/AP_SerialManager.h>
+#include <AP_RCTelemetry/AP_RCTelemetry_config.h>
 #include <ctype.h>
 
 #if OSD_PARAM_ENABLED
@@ -139,7 +140,12 @@ static const char* SERIAL_PROTOCOL_VALUES[] = {
     "FSKY_TX", "LID360", "", "BEACN", "VOLZ", "SBUS", "ESC_TLM", "DEV_TLM", "OPTFLW", "RBTSRV",
     "NMEA", "WNDVNE", "SLCAN", "RCIN", "MGSQRT", "LTM", "RUNCAM", "HOT_TLM", "SCRIPT", "CRSF",
     "GEN", "WNCH", "MSP", "DJI", "AIRSPD", "ADSB", "AHRS", "AUDIO", "FETTEC", "TORQ",
-    "AIS", "CD_ESC", "MSP_DP", "MAV_HL", "TRAMP", "DDS", "IMUOUT", "IQ", "PPP", "IBUS_TLM", "IOMCU"
+    "AIS", "CD_ESC", "MSP_DP", "MAV_HL", "TRAMP", "DDS", "IMUOUT", "IQ", "PPP", "IBUS_TLM", "IOMCU",
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+    "CRSF_TX"
+#else
+    ""
+#endif
 };
 static_assert(AP_SerialManager::SerialProtocol_NumProtocols == ARRAY_SIZE(SERIAL_PROTOCOL_VALUES), "Wrong size SerialProtocol_NumProtocols");
 
@@ -482,4 +488,3 @@ void AP_OSD_ParamSetting::save_as_new()
 }
 
 #endif // OSD_PARAM_ENABLED
-
