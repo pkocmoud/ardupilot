@@ -27,6 +27,7 @@
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Math/AP_Math.h>
 #include <AP_RCProtocol/AP_RCProtocol.h>
+#include <AP_RCTelemetry/AP_RCTelemetry_config.h>
 #include <AP_MSP/AP_MSP.h>
 #include <AP_InertialSensor/AP_InertialSensor.h>
 #include "AP_SerialManager.h"
@@ -185,7 +186,7 @@ const AP_Param::GroupInfo AP_SerialManager::var_info[] = {
     // @DisplayName: Telem1 protocol selection
     // @Description: Control what protocol to use on the Telem1 port. Note that the Frsky options require external converter hardware. See the wiki for details.
     // @SortValues: AlphabeticalZeroAtTop
-    // @Values: -1:None, 1:MAVLink1, 2:MAVLink2, 3:Frsky D, 4:Frsky SPort, 5:GPS, 7:Alexmos Gimbal Serial, 8:Gimbal, 9:Rangefinder, 10:FrSky SPort Passthrough (OpenTX), 11:Lidar360, 13:Beacon, 14:Volz servo out, 15:SBus servo out, 16:ESC Telemetry, 17:Devo Telemetry, 18:OpticalFlow, 19:RobotisServo, 20:NMEA Output, 21:WindVane, 22:SLCAN, 23:RCIN, 24:EFI Serial, 25:LTM, 26:RunCam, 27:HottTelem, 28:Scripting, 29:Crossfire VTX, 30:Generator, 31:Winch, 32:MSP, 33:DJI FPV, 34:AirSpeed, 35:ADSB, 36:AHRS, 37:SmartAudio, 38:FETtecOneWire, 39:Torqeedo, 40:AIS, 41:CoDevESC, 42:DisplayPort, 43:MAVLink High Latency, 44:IRC Tramp, 45:DDS XRCE, 46:IMUDATA, 48:PPP, 49:i-BUS Telemetry, 50: IOMCU
+    // @Values: -1:None, 1:MAVLink1, 2:MAVLink2, 3:Frsky D, 4:Frsky SPort, 5:GPS, 7:Alexmos Gimbal Serial, 8:Gimbal, 9:Rangefinder, 10:FrSky SPort Passthrough (OpenTX), 11:Lidar360, 13:Beacon, 14:Volz servo out, 15:SBus servo out, 16:ESC Telemetry, 17:Devo Telemetry, 18:OpticalFlow, 19:RobotisServo, 20:NMEA Output, 21:WindVane, 22:SLCAN, 23:RCIN, 24:EFI Serial, 25:LTM, 26:RunCam, 27:HottTelem, 28:Scripting, 29:Crossfire VTX, 30:Generator, 31:Winch, 32:MSP, 33:DJI FPV, 34:AirSpeed, 35:ADSB, 36:AHRS, 37:SmartAudio, 38:FETtecOneWire, 39:Torqeedo, 40:AIS, 41:CoDevESC, 42:DisplayPort, 43:MAVLink High Latency, 44:IRC Tramp, 45:DDS XRCE, 46:IMUDATA, 48:PPP, 49:i-BUS Telemetry, 50:IOMCU, 51:CRSF TX
     // @User: Standard
     // @RebootRequired: True
     AP_GROUPINFO("1_PROTOCOL",  1, AP_SerialManager, state[1].protocol, DEFAULT_SERIAL1_PROTOCOL),
@@ -542,6 +543,12 @@ void AP_SerialManager::init()
 
                     break;
 #endif
+
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+                case SerialProtocol_CRSF_TX:
+                    // initialised by AP_RCProtocol_CRSF
+                    break;
+#endif
                     
                 case SerialProtocol_EFI:
                     state[i].baud.set_default(AP_SERIALMANAGER_EFI_MS_BAUD);
@@ -842,6 +849,22 @@ void AP_SerialManager::set_protocol_and_baud(uint8_t sernum, enum SerialProtocol
 }
 bool AP_SerialManager::pre_arm_checks(char *failure_msg, const uint8_t failure_msg_len)
 {
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+    const bool have_crsf_tx = have_serial(SerialProtocol_CRSF_TX, 0);
+    if (have_crsf_tx && !have_serial(SerialProtocol_RCIN, 0)) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "CRSF TX requires an RCIN serial port");
+        return false;
+    }
+    if (have_crsf_tx && have_serial(SerialProtocol_CRSF, 0)) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "CRSF TX conflicts with Crossfire VTX");
+        return false;
+    }
+    if (have_serial(SerialProtocol_CRSF_TX, 1)) {
+        hal.util->snprintf(failure_msg, failure_msg_len, "Multiple CRSF TX ports configured");
+        return false;
+    }
+#endif
+
     // PARAMETER_CONVERSION - Added May 2028 for ArduPilot-4.7
     // ArduPilot 4.7 pre-arm fails if either bit is set when conversion should have nuked them
     // ArduPilot 4.8 pre-arm fails if either bit is set when conversion should have nuked them
