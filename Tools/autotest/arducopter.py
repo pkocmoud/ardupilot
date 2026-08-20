@@ -16387,6 +16387,7 @@ return update, 1000
             self.CompassReordering,
             self.SixCompassCalibrationAndReordering,
             self.CRSF,
+            self.CRSFSplitUART,
             self.MotorTest,
             self.AltEstimation,
             self.EKFSource,

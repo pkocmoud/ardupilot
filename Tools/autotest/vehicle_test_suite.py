@@ -1126,6 +1126,39 @@ class CRSF(Telem):
     def write_data_id(self, dataid):
         self.do_write(self.data_id_map[dataid])
 
+    @staticmethod
+    def crc8_dvb_s2(data):
+        crc = 0
+        for value in data:
+            crc ^= value
+            for _ in range(8):
+                if crc & 0x80:
+                    crc = ((crc << 1) ^ 0xD5) & 0xFF
+                else:
+                    crc = (crc << 1) & 0xFF
+        return crc
+
+    def valid_frames(self, data):
+        frames = []
+        offset = 0
+        while len(data) - offset >= 2:
+            if data[offset] != 0xC8:
+                offset += 1
+                continue
+            frame_length = data[offset + 1] + 2
+            if frame_length < 4:
+                offset += 1
+                continue
+            if len(data) - offset < frame_length:
+                break
+            frame = data[offset:offset + frame_length]
+            if self.crc8_dvb_s2(frame[2:-1]) == frame[-1]:
+                frames.append(frame)
+                offset += frame_length
+            else:
+                offset += 1
+        return frames
+
     def progress_tag(self):
         return "CRSF"
 
@@ -14531,6 +14564,67 @@ switch value'''
             crsf.write_data_id(crsf.dataid_vtx_unknown)
             self.delay_sim_time(5)
         except Exception as e:
+            self.print_exception_caught(e)
+            ex = e
+        self.context_pop()
+        self.disarm_vehicle(force=True)
+        self.reboot_sitl()
+        if ex is not None:
+            raise ex
+
+    def CRSFSplitUART(self):
+        '''Test CRSF input and telemetry on separate UARTs'''
+        self.context_push()
+        ex = None
+        try:
+            self.set_parameters({
+                "SERIAL5_PROTOCOL": 23,  # CRSF input through RCIN
+                "SERIAL6_PROTOCOL": 51,  # CRSF telemetry output
+            })
+            rx_port = self.spare_network_port()
+            tx_port = self.spare_network_port(offset=1)
+            self.customise_SITL_commandline([
+                "--serial5=tcp:%u" % rx_port,
+                "--serial6=tcp:%u" % tx_port,
+            ])
+            crsf_rx = CRSF(("127.0.0.1", rx_port))
+            crsf_tx = CRSF(("127.0.0.1", tx_port))
+            if not crsf_rx.connect() or not crsf_tx.connect():
+                raise NotAchievedException("Failed to connect CRSF test UARTs")
+
+            self.progress("Writing CRSF input and waiting for split-UART telemetry")
+            crsf_rx.write_data_id(crsf_rx.dataid_vtx_frame)
+            telemetry = bytes()
+            valid_frames = []
+            tstart = self.get_sim_time()
+            while self.get_sim_time() - tstart < 5:
+                telemetry += crsf_tx.do_read()
+                valid_frames = crsf_tx.valid_frames(telemetry)
+                if valid_frames:
+                    break
+                self.delay_sim_time(0.1)
+            if not valid_frames:
+                raise NotAchievedException(
+                    "Did not receive valid CRSF telemetry on separate TX UART (%s)" % telemetry.hex()
+                )
+
+            self.set_parameter("SERIAL5_PROTOCOL", -1)
+            self.assert_prearm_failure(
+                "CRSF TX requires an RCIN serial port",
+                other_prearm_failures_fatal=False,
+            )
+            self.set_parameter("SERIAL5_PROTOCOL", 23)
+            self.set_parameter("SERIAL4_PROTOCOL", 29)
+            self.assert_prearm_failure(
+                "CRSF TX conflicts with Crossfire VTX",
+                other_prearm_failures_fatal=False,
+            )
+            self.set_parameter("SERIAL4_PROTOCOL", 51)
+            self.assert_prearm_failure(
+                "Multiple CRSF TX ports configured",
+                other_prearm_failures_fatal=False,
+            )
+        except Exception as e:  # noqa: BLE001
             self.print_exception_caught(e)
             ex = e
         self.context_pop()
