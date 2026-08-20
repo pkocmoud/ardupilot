@@ -130,8 +130,14 @@ AP_RCProtocol_CRSF::AP_RCProtocol_CRSF(AP_RCProtocol &_frontend) : AP_RCProtocol
 #if HAL_CRSF_TELEM_ENABLED && !APM_BUILD_TYPE(APM_BUILD_UNKNOWN)
     _uart = AP::serialmanager().find_serial(AP_SerialManager::SerialProtocol_CRSF, 0);
     if (_uart) {
-        start_uart();
+        start_uart(_uart);
     }
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+    _telemetry_uart = AP::serialmanager().find_serial(AP_SerialManager::SerialProtocol_CRSF_TX, 0);
+    if (_telemetry_uart) {
+        start_uart(_telemetry_uart);
+    }
+#endif
 #endif
 }
 
@@ -301,7 +307,7 @@ void AP_RCProtocol_CRSF::update(void)
         uint32_t now = AP_HAL::millis();
         // for some reason it's necessary to keep trying to start the uart until we get data
         if (now - _last_uart_start_time_ms > 1000U && _last_frame_time_us == 0) {
-            start_uart();
+            start_uart(_uart);
             _last_uart_start_time_ms = now;
         }
         uint32_t n = _uart->available();
@@ -324,7 +330,13 @@ void AP_RCProtocol_CRSF::update(void)
         && now - _last_frame_time_us > CRSF_INTER_FRAME_TIME_US_250HZ) {
         // don't send telemetry unless the UART we are dealing with is configured to send it
         AP_HAL::UARTDriver *uart = get_available_UART();
-        if (_uart || (uart && (uart->get_baud_rate() == CRSF_BAUDRATE || uart->get_baud_rate() == ELRS_BAUDRATE))) {
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+        const bool have_split_uart = _telemetry_uart != nullptr;
+#else
+        constexpr bool have_split_uart = false;
+#endif
+        if (_uart || have_split_uart ||
+            (uart && (uart->get_baud_rate() == CRSF_BAUDRATE || uart->get_baud_rate() == ELRS_BAUDRATE))) {
             process_telemetry(false);
             _last_frame_time_us = now;
         }
@@ -339,7 +351,7 @@ void AP_RCProtocol_CRSF::update(void)
 // write out a frame of any type
 void AP_RCProtocol_CRSF::write_frame(Frame* frame)
 {
-    AP_HAL::UARTDriver *uart = get_current_UART();
+    AP_HAL::UARTDriver *uart = get_tx_uart();
 
     if (!uart) {
         return;
@@ -458,7 +470,7 @@ bool AP_RCProtocol_CRSF::decode_crsf_packet()
     }
     // process any pending baudrate changes before reading another frame
     if (_new_baud_rate > 0) {
-        AP_HAL::UARTDriver *uart = get_current_UART();
+        AP_HAL::UARTDriver *uart = get_tx_uart();
 
         if (uart) {
             // wait for all the pending data to be sent
@@ -468,7 +480,11 @@ bool AP_RCProtocol_CRSF::decode_crsf_packet()
             // now wait for 4ms to account for RX transmission and processing
             hal.scheduler->delay(4);
             // change the baud rate
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+            set_uart_baud(_new_baud_rate);
+#else
             uart->begin(_new_baud_rate);
+#endif
         }
         _new_baud_rate = 0;
     }
@@ -547,7 +563,7 @@ void AP_RCProtocol_CRSF::decode_variable_bit_channels(const uint8_t* payload, ui
 bool AP_RCProtocol_CRSF::process_telemetry(bool check_constraint)
 {
 
-    AP_HAL::UARTDriver *uart = get_current_UART();
+    AP_HAL::UARTDriver *uart = get_tx_uart();
     if (!uart) {
         return false;
     }
@@ -659,25 +675,54 @@ void AP_RCProtocol_CRSF::process_link_stats_tx_frame(const void* data)
     }
 }
 
-// start the uart if we have one
-void AP_RCProtocol_CRSF::start_uart()
+// start a UART used directly by this backend
+void AP_RCProtocol_CRSF::start_uart(AP_HAL::UARTDriver *uart)
 {
-    _uart->configure_parity(0);
-    _uart->set_stop_bits(1);
-    _uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
-    _uart->set_options(_uart->get_options() & ~AP_HAL::UARTDriver::OPTION_RXINV);
-    _uart->begin(get_bootstrap_baud_rate());
+    uart->configure_parity(0);
+    uart->set_stop_bits(1);
+    uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
+    uart->set_options(uart->get_options() & ~AP_HAL::UARTDriver::OPTION_RXINV);
+    uart->begin(get_bootstrap_baud_rate());
 }
+
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+// keep separate receive and telemetry UARTs at the same CRSF baud rate
+void AP_RCProtocol_CRSF::set_uart_baud(uint32_t baudrate)
+{
+    AP_HAL::UARTDriver *rx_uart = get_rx_uart();
+    AP_HAL::UARTDriver *tx_uart = get_tx_uart();
+
+    if (rx_uart != nullptr) {
+        rx_uart->begin(baudrate);
+    }
+    if (tx_uart != nullptr && tx_uart != rx_uart) {
+        tx_uart->begin(baudrate);
+    }
+}
+#endif
 
 // change the baudrate of the protocol if we are able
 bool AP_RCProtocol_CRSF::change_baud_rate(uint32_t baudrate)
 {
-    AP_HAL::UARTDriver* uart = get_available_UART();
-    if (uart == nullptr) {
+    AP_HAL::UARTDriver* rx_uart = get_available_UART();
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+    // protocol 29 checks the active RC input here while set_uart_baud() retains the existing VTX UART restart
+    AP_HAL::UARTDriver* tx_uart = get_tx_uart();
+    if (rx_uart == nullptr || tx_uart == nullptr) {
         return false;
     }
+#else
+    if (rx_uart == nullptr) {
+        return false;
+    }
+#endif
 #if !defined(STM32H7)
-    if (baudrate > get_bootstrap_baud_rate() && !uart->is_dma_enabled()) {
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+    if (baudrate > get_bootstrap_baud_rate() &&
+        (!rx_uart->is_dma_enabled() || !tx_uart->is_dma_enabled())) {
+#else
+    if (baudrate > get_bootstrap_baud_rate() && !rx_uart->is_dma_enabled()) {
+#endif
         return false;
     }
 #endif
@@ -693,7 +738,7 @@ bool AP_RCProtocol_CRSF::change_baud_rate(uint32_t baudrate)
 // change the bootstrap baud rate to ELRS standard if configured
 void AP_RCProtocol_CRSF::process_handshake(uint32_t baudrate)
 {
-    AP_HAL::UARTDriver *uart = get_current_UART();
+    AP_HAL::UARTDriver *uart = get_rx_uart();
 
     // only change the baudrate if we are bootstrapping CRSF
     if (uart == nullptr
@@ -704,7 +749,11 @@ void AP_RCProtocol_CRSF::process_handshake(uint32_t baudrate)
         return;
     }
 
+#if AP_CRSF_TELEM_SPLIT_UART_ENABLED
+    set_uart_baud(get_bootstrap_baud_rate());
+#else
     uart->begin(get_bootstrap_baud_rate());
+#endif
 }
 
 //returns uplink link quality on 0-255 scale
