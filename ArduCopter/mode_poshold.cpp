@@ -420,6 +420,7 @@ void ModePosHold::run()
         brake.loiter_transition_start_time_ms = now_ms;
         // init loiter controller
         loiter_nav->init_target_m((pos_control->get_pos_estimate_NED_m().xy() - pos_control->get_pos_offset_NED_m().xy()));
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "PosHold: target captured");
         // set delay to start of wind compensation estimate updates
         wind_comp_start_time_ms = now_ms;
     }
@@ -438,6 +439,7 @@ void ModePosHold::run()
                     // progress to full loiter on next iteration
                     roll_mode = RPMode::LOITER;
                     pitch_mode = RPMode::LOITER;
+                    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "PosHold: hold active");
                 }
 
                 // mix of brake and loiter controls
