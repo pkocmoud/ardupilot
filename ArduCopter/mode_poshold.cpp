@@ -96,6 +96,9 @@ bool ModePosHold::init(bool ignore_checks)
         pitch_mode = RPMode::PILOT_OVERRIDE;
     }
 
+    // force the first run to log the initial roll and pitch states
+    state_log_initialized = false;
+
     // initialise loiter
     loiter_nav->clear_pilot_desired_acceleration();
     loiter_nav->init_target();
@@ -531,6 +534,28 @@ void ModePosHold::run()
 
     // run the vertical position controller and set output throttle
     pos_control->D_update_controller();
+
+    // log roll and pitch state transitions
+    log_state_change();
+}
+
+// log_state_change - write a PHLD message whenever either PosHold axis changes state
+void ModePosHold::log_state_change()
+{
+    if (state_log_initialized &&
+        (roll_mode == last_logged_roll_mode) &&
+        (pitch_mode == last_logged_pitch_mode)) {
+        return;
+    }
+
+    AP::logger().Write("PHLD", "TimeUS,RState,PState", "QBB",
+                       AP_HAL::micros64(),
+                       (uint8_t)roll_mode,
+                       (uint8_t)pitch_mode);
+
+    last_logged_roll_mode = roll_mode;
+    last_logged_pitch_mode = pitch_mode;
+    state_log_initialized = true;
 }
 
 // poshold_update_pilot_lean_angle - update the pilot's filtered lean angle with the latest raw input received

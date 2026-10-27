@@ -1440,6 +1440,7 @@ private:
     void get_wind_comp_lean_angles_rad(float &roll_angle_rad, float &pitch_angle_rad);
     void roll_controller_to_pilot_override();
     void pitch_controller_to_pilot_override();
+    void log_state_change();
 
     enum class RPMode {
         PILOT_OVERRIDE=0,            // pilot is controlling this axis (i.e. roll or pitch)
@@ -1452,6 +1453,9 @@ private:
 
     RPMode roll_mode;
     RPMode pitch_mode;
+    RPMode last_logged_roll_mode;
+    RPMode last_logged_pitch_mode;
+    bool state_log_initialized;
 
     // pilot input related variables
     float pilot_roll_rad;   // filtered roll lean angle commanded by the pilot. Slowly returns to zero when stick is released
